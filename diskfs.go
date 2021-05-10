@@ -110,7 +110,6 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	"github.com/diskfs/go-diskfs/disk"
 )
@@ -120,7 +119,7 @@ import (
 const (
 	defaultBlocksize, firstblock int = 512, 2048
 	blksszGet                        = 0x1268
-	blkbszGet                        = 0x80081270
+	blkpbszGet                       = 0x127b
 )
 
 // Format represents the format of the disk
@@ -182,7 +181,7 @@ func initDisk(f *os.File, openMode OpenModeOption) (*disk.Disk, error) {
 	// get device information
 	devInfo, err := f.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("could not get info for device %s: %x", f.Name(), err)
+		return nil, fmt.Errorf("could not get info for device %s: %v", f.Name(), err)
 	}
 	mode := devInfo.Mode()
 	switch {
@@ -198,11 +197,11 @@ func initDisk(f *os.File, openMode OpenModeOption) (*disk.Disk, error) {
 		diskType = disk.Device
 		file, err := os.Open(f.Name())
 		if err != nil {
-			return nil, fmt.Errorf("error opening block device %s: %s\n", f.Name(), err)
+			return nil, fmt.Errorf("error opening block device %s: %s", f.Name(), err)
 		}
 		size, err = file.Seek(0, io.SeekEnd)
 		if err != nil {
-			return nil, fmt.Errorf("error seeking to end of block device %s: %s\n", f.Name(), err)
+			return nil, fmt.Errorf("error seeking to end of block device %s: %s", f.Name(), err)
 		}
 		lblksize, pblksize, err = getSectorSizes(f)
 		log.Debugf("initDisk(): logical block size %d, physical block size %d", lblksize, pblksize)
@@ -220,7 +219,7 @@ func initDisk(f *os.File, openMode OpenModeOption) (*disk.Disk, error) {
 
 	writable := writableMode(openMode)
 
-	return &disk.Disk{
+	ret := &disk.Disk{
 		File:              f,
 		Info:              devInfo,
 		Type:              diskType,
@@ -229,7 +228,16 @@ func initDisk(f *os.File, openMode OpenModeOption) (*disk.Disk, error) {
 		PhysicalBlocksize: pblksize,
 		Writable:          writable,
 		DefaultBlocks:     defaultBlocks,
-	}, nil
+	}
+
+	// try to initialize the partition table.
+	// we ignore errors, because it is perfectly fine to open a disk
+	// and use it before it has a partition table. This is solely
+	// a convenience.
+	if table, err := ret.GetPartitionTable(); err == nil && table != nil {
+		ret.Table = table
+	}
+	return ret, nil
 }
 
 func checkDevice(device string) error {
@@ -301,22 +309,4 @@ func Create(device string, size int64, format Format) (*disk.Disk, error) {
 	}
 	// return our disk
 	return initDisk(f, ReadWriteExclusive)
-}
-
-// to get the logical and physical sector sizes
-func getSectorSizes(f *os.File) (int64, int64, error) {
-	/*
-		ioctl(fd, BLKBSZGET, &physicalsectsize);
-
-	*/
-	fd := f.Fd()
-	logicalSectorSize, err := unix.IoctlGetInt(int(fd), blksszGet)
-	if err != nil {
-		return 0, 0, fmt.Errorf("Unable to get device logical sector size: %v", err)
-	}
-	physicalSectorSize, err := unix.IoctlGetInt(int(fd), blkbszGet)
-	if err != nil {
-		return 0, 0, fmt.Errorf("Unable to get device physical sector size: %v", err)
-	}
-	return int64(logicalSectorSize), int64(physicalSectorSize), nil
 }

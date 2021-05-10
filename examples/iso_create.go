@@ -11,17 +11,11 @@ import (
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
 )
 
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
-}
 func CreateIso(diskImg string) {
 	if diskImg == "" {
 		log.Fatal("must have a valid path for diskImg")
 	}
-	var diskSize int64
-	diskSize = 10 * 1024 * 1024 // 10 MB
+	var diskSize int64 = 10 * 1024 * 1024 // 10 MB
 	mydisk, err := diskfs.Create(diskImg, diskSize, diskfs.Raw)
 	check(err)
 

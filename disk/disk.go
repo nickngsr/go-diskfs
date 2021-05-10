@@ -15,6 +15,7 @@ import (
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/fat32"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
+	"github.com/diskfs/go-diskfs/filesystem/squashfs"
 	"github.com/diskfs/go-diskfs/partition"
 )
 
@@ -130,6 +131,7 @@ type FilesystemSpec struct {
 	Partition   int
 	FSType      filesystem.Type
 	VolumeLabel string
+	WorkDir     string
 }
 
 // CreateFilesystem creates a filesystem on a disk image, the equivalent of mkfs.
@@ -175,7 +177,7 @@ func (d *Disk) CreateFilesystem(spec FilesystemSpec) (filesystem.FileSystem, err
 	case filesystem.TypeFat32:
 		return fat32.Create(d.File, size, start, d.LogicalBlocksize, spec.VolumeLabel)
 	case filesystem.TypeISO9660:
-		return iso9660.Create(d.File, size, start, d.LogicalBlocksize)
+		return iso9660.Create(d.File, size, start, d.LogicalBlocksize, spec.WorkDir)
 	default:
 		return nil, errors.New("Unknown filesystem type requested")
 	}
@@ -229,5 +231,9 @@ func (d *Disk) GetFilesystem(partition int) (filesystem.FileSystem, error) {
 		return iso9660FS, nil
 	}
 	log.Debugf("iso9660 failed: %v", err)
+	squashFS, err := squashfs.Read(d.File, size, start, d.LogicalBlocksize)
+	if err == nil {
+		return squashFS, nil
+	}
 	return nil, fmt.Errorf("Unknown filesystem on partition %d", partition)
 }
